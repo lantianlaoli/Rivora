@@ -141,7 +141,7 @@ function RowField({
 function RowPreview({ row }: { row: ParsedWorkbookRow }) {
   const [expandedFields, setExpandedFields] = useState<Record<string, boolean>>({});
   const toggleField = (field: string) => {
-    setExpandedFields((current) => ({ ...current, [field]: !current[field] }));
+    setExpandedFields((current) => ({ ...current, [`${row.id}-${field}`]: !current[`${row.id}-${field}`] }));
   };
 
   return (
@@ -159,7 +159,7 @@ function RowPreview({ row }: { row: ParsedWorkbookRow }) {
             label="Requirement"
             value={row.requirement}
             expandable={row.requirement.length > 200}
-            expanded={Boolean(expandedFields.requirement)}
+            expanded={Boolean(expandedFields[`${row.id}-requirement`])}
             onToggle={() => toggleField("requirement")}
           />
           <RowField
@@ -167,7 +167,7 @@ function RowPreview({ row }: { row: ParsedWorkbookRow }) {
             label="Copy"
             value={row.copyText}
             expandable={row.copyText.length > 200}
-            expanded={Boolean(expandedFields.copy)}
+            expanded={Boolean(expandedFields[`${row.id}-copy`])}
             onToggle={() => toggleField("copy")}
           />
           <RowField icon={Palette} label="Style" value={row.style} />
