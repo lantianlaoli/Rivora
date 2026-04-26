@@ -213,6 +213,8 @@ export default function Home() {
     setError("");
     setJobs([]);
     setWorkbook(null);
+    setIncludeMainImageRow(false);
+    setIsProductDescriptionExpanded(false);
     setUploadProgress({ label: "Uploading workbook", percent: 8 });
 
     const payload = await new Promise<ParsedWorkbook>((resolve, reject) => {
