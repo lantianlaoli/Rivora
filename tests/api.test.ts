@@ -179,6 +179,139 @@ test("POST /api/generate/regenerate creates a new task from the current result i
   }
 });
 
+test("POST /api/generate/regenerate uploads local reference images and passes them to KIE", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKieApiKey = process.env.KIE_API_KEY;
+  type CapturedCreateTaskBody = {
+    input: {
+      input_urls: string[];
+      prompt: string;
+    };
+  };
+  let capturedUploadBody: { uploadPath: string; fileName: string; base64Data: string } | undefined;
+  let capturedCreateTaskBody: CapturedCreateTaskBody | undefined;
+  process.env.KIE_API_KEY = "test-kie-key";
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    if (url === "https://kieai.redpandaai.co/api/file-base64-upload") {
+      capturedUploadBody = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({ success: true, data: { downloadUrl: "https://cdn.example.com/local-product.png" } }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+    if (url === "https://api.kie.ai/api/v1/jobs/createTask") {
+      capturedCreateTaskBody = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ code: 200, data: { taskId: "regenerated-with-local-image" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    throw new Error(`Unexpected fetch: ${url}`);
+  };
+
+  const job: GenerationJob = {
+    rowId: "row-3",
+    rowNumber: 3,
+    sequence: "2",
+    taskId: "original-task",
+    status: "success",
+    resultUrl: "https://example.com/original.png",
+    prompt: "Original product prompt",
+    aspectRatio: "1:1",
+    resolution: "2K",
+    sourceRow: { cells: { A: "2" } },
+  };
+
+  try {
+    const response = await regenerateImage(
+      new Request("http://localhost:3000/api/generate/regenerate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          job,
+          resultUrl: job.resultUrl,
+          refinement: "Replace the product with the uploaded reference.",
+          localImages: [{ fileName: "product replacement.png", dataUrl: "data:image/png;base64,AA==" }],
+        }),
+      })
+    );
+
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.job.taskId, "regenerated-with-local-image");
+    assert.ok(capturedUploadBody);
+    assert.equal(capturedUploadBody.uploadPath, "rivora/edit-uploads");
+    assert.equal(capturedUploadBody.fileName, "product-replacement.png");
+    assert.equal(capturedUploadBody.base64Data, "data:image/png;base64,AA==");
+    assert.ok(capturedCreateTaskBody);
+    assert.deepEqual(capturedCreateTaskBody.input.input_urls, [
+      "https://example.com/original.png",
+      "https://cdn.example.com/local-product.png",
+    ]);
+    assert.match(capturedCreateTaskBody.input.prompt, /uploaded local image references/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKieApiKey === undefined) {
+      delete process.env.KIE_API_KEY;
+    } else {
+      process.env.KIE_API_KEY = originalKieApiKey;
+    }
+  }
+});
+
+test("POST /api/generate/regenerate rejects invalid local reference images", async () => {
+  const job: GenerationJob = {
+    rowId: "row-3",
+    rowNumber: 3,
+    sequence: "2",
+    taskId: "original-task",
+    status: "success",
+    resultUrl: "https://example.com/original.png",
+    prompt: "Original product prompt",
+    aspectRatio: "1:1",
+    resolution: "2K",
+    sourceRow: { cells: { A: "2" } },
+  };
+
+  const invalidTypeResponse = await regenerateImage(
+    new Request("http://localhost:3000/api/generate/regenerate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        job,
+        resultUrl: job.resultUrl,
+        refinement: "Use this local file.",
+        localImages: [{ fileName: "notes.txt", dataUrl: "data:text/plain;base64,AA==" }],
+      }),
+    })
+  );
+
+  assert.equal(invalidTypeResponse.status, 400);
+  assert.deepEqual(await invalidTypeResponse.json(), {
+    error: "Local reference images must be PNG, JPG, or WEBP data URLs.",
+  });
+
+  const tooManyResponse = await regenerateImage(
+    new Request("http://localhost:3000/api/generate/regenerate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        job,
+        resultUrl: job.resultUrl,
+        refinement: "Use these local files.",
+        localImages: Array.from({ length: 5 }, (_, index) => ({
+          fileName: `image-${index}.png`,
+          dataUrl: "data:image/png;base64,AA==",
+        })),
+      }),
+    })
+  );
+
+  assert.equal(tooManyResponse.status, 400);
+  assert.deepEqual(await tooManyResponse.json(), { error: "Upload up to 4 local reference images." });
+});
+
 test("POST /api/generate/start reuses duplicate workbook image uploads across rows", async () => {
   const originalFetch = globalThis.fetch;
   const originalKieApiKey = process.env.KIE_API_KEY;

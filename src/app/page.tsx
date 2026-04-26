@@ -20,6 +20,8 @@ import {
   ChevronDown,
   Rows3,
   Type,
+  Plus,
+  Upload,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -37,6 +39,12 @@ type RegenerateModalState = {
   resultUrl?: string;
   fontReferenceUrl?: string;
   textBlocks?: TextBlock[];
+  localImages?: LocalReferenceImage[];
+};
+type LocalReferenceImage = {
+  id: string;
+  fileName: string;
+  dataUrl: string;
 };
 type PersistedPageState = {
   workbook: ParsedWorkbook | null;
@@ -50,6 +58,9 @@ const PAGE_STATE_STORAGE_KEY = "rivora.pageState.v1";
 const RESTORABLE_STATUSES = new Set<Status>(["idle", "ready", "polling", "done", "error"]);
 const FONT_REFERENCE_PREFIX =
   "Font reference: Use the same font style and text treatment as shown in the font reference image.\n\n";
+const MAX_LOCAL_REFERENCE_IMAGES = 4;
+const MAX_LOCAL_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
+const LOCAL_REFERENCE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const DEFAULT_PAGE_STATE: PersistedPageState = {
   workbook: null,
   includeMainImageRow: false,
@@ -272,6 +283,7 @@ export default function Home() {
   const [refinement, setRefinement] = useState("");
   const [regenerateError, setRegenerateError] = useState("");
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [localImageError, setLocalImageError] = useState("");
   const [isProductDescriptionExpanded, setIsProductDescriptionExpanded] = useState(
     DEFAULT_PAGE_STATE.isProductDescriptionExpanded
   );
@@ -471,11 +483,78 @@ export default function Home() {
     link.click();
   }
 
+  function readLocalReferenceImage(file: File) {
+    return new Promise<LocalReferenceImage>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result !== "string") {
+          reject(new Error("Could not read this image."));
+          return;
+        }
+        resolve({
+          id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
+          fileName: file.name,
+          dataUrl: reader.result,
+        });
+      };
+      reader.onerror = () => reject(new Error("Could not read this image."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleLocalReferenceImages(files: FileList | null) {
+    if (!files?.length || !regenerateModal) return;
+    setLocalImageError("");
+    const currentImages = regenerateModal.localImages ?? [];
+    const selectedFiles = Array.from(files);
+    if (currentImages.length + selectedFiles.length > MAX_LOCAL_REFERENCE_IMAGES) {
+      setLocalImageError(`Upload up to ${MAX_LOCAL_REFERENCE_IMAGES} local reference images.`);
+      return;
+    }
+
+    const invalidFile = selectedFiles.find((file) => !LOCAL_REFERENCE_IMAGE_TYPES.has(file.type));
+    if (invalidFile) {
+      setLocalImageError("Local reference images must be PNG, JPG, or WEBP.");
+      return;
+    }
+    const oversizedFile = selectedFiles.find((file) => file.size > MAX_LOCAL_REFERENCE_IMAGE_BYTES);
+    if (oversizedFile) {
+      setLocalImageError("Each local reference image must be 10MB or smaller.");
+      return;
+    }
+
+    try {
+      const nextImages = await Promise.all(selectedFiles.map((file) => readLocalReferenceImage(file)));
+      setRegenerateModal((modal) =>
+        modal
+          ? {
+              ...modal,
+              localImages: [...(modal.localImages ?? []), ...nextImages].slice(0, MAX_LOCAL_REFERENCE_IMAGES),
+            }
+          : modal
+      );
+    } catch (imageError) {
+      setLocalImageError(imageError instanceof Error ? imageError.message : "Could not read this image.");
+    }
+  }
+
+  function removeLocalReferenceImage(imageId: string) {
+    setRegenerateModal((modal) =>
+      modal
+        ? {
+            ...modal,
+            localImages: (modal.localImages ?? []).filter((image) => image.id !== imageId),
+          }
+        : modal
+    );
+  }
+
   function openRegenerateModal(job: GenerationJob) {
     if (!job.resultUrl) return;
-    setRegenerateModal({ job, resultUrl: job.resultUrl, fontReferenceUrl: undefined });
+    setRegenerateModal({ job, resultUrl: job.resultUrl, fontReferenceUrl: undefined, localImages: [] });
     setRefinement("");
     setRegenerateError("");
+    setLocalImageError("");
     setIsFontRefSelectorOpen(false);
     setEditedTexts({});
     setIsEditTextMode(false);
@@ -524,6 +603,7 @@ export default function Home() {
     setRegenerateError("");
 
     let finalRefinement = refinement;
+    const localImages = regenerateModal.localImages ?? [];
     if (isEditTextMode) {
       const changedEntries = (regenerateModal.textBlocks ?? [])
         .map((block) => ({
@@ -537,6 +617,10 @@ export default function Home() {
           .join("\n");
         finalRefinement = `Edit the following text in the image:\n${changes}`;
       }
+    }
+    if (!finalRefinement.trim() && localImages.length) {
+      finalRefinement =
+        "Use the uploaded local reference image(s) as visual guidance for the requested image-to-image edit.";
     }
 
     // Append font reference if set
@@ -552,6 +636,10 @@ export default function Home() {
           job: regenerateModal.job,
           resultUrl: regenerateModal.resultUrl,
           refinement: finalRefinement + fontRefText,
+          localImages: localImages.map((image) => ({
+            fileName: image.fileName,
+            dataUrl: image.dataUrl,
+          })),
         }),
       });
       const payload = await response.json();
@@ -650,6 +738,8 @@ export default function Home() {
           (regenerateModalStatus === "waiting" || regenerateModalStatus === "processing")))
   );
   const isRegenerateModalFailed = regenerateModalStatus === "fail";
+  const localReferenceImages = regenerateModal?.localImages ?? [];
+  const hasLocalReferenceImages = localReferenceImages.length > 0;
 
   return (
     <main className="min-h-screen bg-[#10100f] text-zinc-100">
@@ -1076,6 +1166,35 @@ export default function Home() {
 
             {/* Prompt + action section */}
             <form onSubmit={submitRegeneration} className="flex flex-col p-5">
+              <label
+                  className={`mt-2 flex h-12 w-12 cursor-pointer items-center justify-center rounded-lg border border-dashed border-white/20 text-zinc-500 transition hover:border-white/40 hover:text-zinc-300 ${
+                    isRegenerateModalGenerating || localReferenceImages.length >= MAX_LOCAL_REFERENCE_IMAGES
+                      ? "cursor-not-allowed opacity-50"
+                      : ""
+                  }`}
+                  title={localReferenceImages.length >= MAX_LOCAL_REFERENCE_IMAGES ? "Max images reached" : "Add image"}
+                >
+                  <Plus size={18} aria-hidden="true" />
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    multiple
+                    disabled={isRegenerateModalGenerating || localReferenceImages.length >= MAX_LOCAL_REFERENCE_IMAGES}
+                    className="sr-only"
+                    onChange={(event) => {
+                      handleLocalReferenceImages(event.target.files).catch((imageError) => {
+                        setLocalImageError(
+                          imageError instanceof Error ? imageError.message : "Could not read this image."
+                        );
+                      });
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
+                {localImageError ? (
+                  <div className="mt-1 text-xs leading-5 text-amber-200">{localImageError}</div>
+                ) : null}
+
               {/* Refinement textarea — hidden when in edit text mode */}
               {!isEditTextMode ? (
                 <textarea
@@ -1200,8 +1319,9 @@ export default function Home() {
                   disabled={
                     isRegenerateModalGenerating ||
                     !regenerateModal.resultUrl ||
-                    (!isEditTextMode && !refinement.trim()) ||
+                    (!isEditTextMode && !refinement.trim() && !hasLocalReferenceImages) ||
                     (isEditTextMode &&
+                      !hasLocalReferenceImages &&
                       !regenerateModal.textBlocks?.some(
                         (block) => (editedTexts[block.id] ?? block.text).trim() !== block.text.trim()
                       ))
