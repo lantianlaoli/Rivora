@@ -203,6 +203,7 @@ export default function Home() {
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [isFontRefSelectorOpen, setIsFontRefSelectorOpen] = useState(false);
   const pollingRef = useRef<number | null>(null);
+  const generationSectionRef = useRef<HTMLDivElement>(null);
 
   const rows = useMemo(() => allRows(workbook, includeMainImageRow), [workbook, includeMainImageRow]);
   const canGenerate = status === "ready" || status === "done" || status === "error";
@@ -279,6 +280,7 @@ export default function Home() {
       sourceRow: row.source,
     }));
     setJobs(pendingJobs);
+    generationSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     const response = await fetch("/api/generate/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -550,7 +552,7 @@ export default function Home() {
                 }
                 className="mt-5 w-full rounded-md bg-lime-300 px-4 py-2 text-sm font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
               >
-                Generate all rows
+                Start Generation
               </button>
               <button
                 type="button"
@@ -587,7 +589,7 @@ export default function Home() {
         )}
 
         {jobs.length ? (
-          <section className="overflow-visible rounded-lg border border-white/10 bg-white/[0.03]">
+          <section ref={generationSectionRef} className="overflow-visible rounded-lg border border-white/10 bg-white/[0.03]">
             <div className="flex items-center justify-between gap-4 border-b border-white/10 px-5 py-3">
               <div>
                 <h2 className="text-sm font-semibold">Generation jobs</h2>
