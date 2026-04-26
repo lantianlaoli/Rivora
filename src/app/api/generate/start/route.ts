@@ -58,7 +58,7 @@ export async function POST(request: Request) {
       const key = `${image.id}:${image.fileName}`;
       const cachedUpload = uploadedUrls.get(key);
       if (cachedUpload) return cachedUpload;
-      const upload = uploadKieImage(image.dataUrl, fileName, "copy-competitors/references");
+      const upload = uploadKieImage(image.dataUrl, fileName, "rivora/references");
       uploadedUrls.set(key, upload);
       return upload;
     }
