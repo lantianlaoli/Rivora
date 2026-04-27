@@ -315,6 +315,7 @@ export default function Home() {
   const [isFontRefSelectorOpen, setIsFontRefSelectorOpen] = useState(false);
   const [isAnalyzingText, setIsAnalyzingText] = useState(false);
   const [textAnalysisError, setTextAnalysisError] = useState("");
+  const [outputSizeNotice, setOutputSizeNotice] = useState("");
   const [editedTexts, setEditedTexts] = useState<Record<string, string>>({});
   const [isEditTextMode, setIsEditTextMode] = useState(false);
   const [hasRestoredPageState, setHasRestoredPageState] = useState(false);
@@ -563,6 +564,17 @@ export default function Home() {
     }
   }
 
+  function removeLocalReferenceImage(imageId: string) {
+    setRegenerateModal((modal) =>
+      modal
+        ? {
+            ...modal,
+            localImages: (modal.localImages ?? []).filter((image) => image.id !== imageId),
+          }
+        : modal
+    );
+  }
+
   function openRegenerateModal(job: GenerationJob) {
     if (!job.resultUrl) return;
     setRegenerateModal({
@@ -580,6 +592,7 @@ export default function Home() {
     setEditedTexts({});
     setIsEditTextMode(false);
     setTextAnalysisError("");
+    setOutputSizeNotice("");
   }
 
   async function analyzeImageText(resultUrl: string) {
@@ -1202,108 +1215,69 @@ export default function Home() {
 
             {/* Prompt + action section */}
             <form onSubmit={submitRegeneration} className="flex flex-col p-5">
-              <div className="mb-4 grid gap-3 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase text-zinc-500">
-                    <Maximize2 size={13} aria-hidden="true" />
-                    Aspect ratio
-                  </span>
-                  <select
-                    value={regenerateModal.aspectRatio}
-                    onChange={(event) => {
-                      const aspectRatio = event.target.value as KieAspectRatio;
-                      setRegenerateModal((modal) =>
-                        modal
-                          ? {
-                              ...modal,
-                              aspectRatio,
-                              resolution: normalizeOutputResolution(aspectRatio, modal.resolution),
-                            }
-                          : modal
-                      );
-                    }}
-                    disabled={isRegenerateModalGenerating}
-                    className="h-10 w-full rounded-md border border-white/10 bg-black/40 px-3 font-mono text-sm text-zinc-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-lime-300/50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {OUTPUT_ASPECT_RATIOS.map((aspectRatio) => (
-                      <option key={aspectRatio} value={aspectRatio}>
-                        {aspectRatio}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase text-zinc-500">
-                    <Gauge size={13} aria-hidden="true" />
-                    Resolution
-                  </span>
-                  <select
-                    value={regenerateModal.resolution}
-                    onChange={(event) =>
-                      setRegenerateModal((modal) =>
-                        modal
-                          ? {
-                              ...modal,
-                              resolution: event.target.value as KieResolution,
-                            }
-                          : modal
-                      )
-                    }
-                    disabled={isRegenerateModalGenerating}
-                    className="h-10 w-full rounded-md border border-white/10 bg-black/40 px-3 font-mono text-sm text-zinc-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-lime-300/50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {OUTPUT_RESOLUTIONS.map((resolution) => (
-                      <option
-                        key={resolution}
-                        value={resolution}
-                        disabled={!isValidOutputSize(regenerateModal.aspectRatio, resolution)}
-                      >
-                        {resolution}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <label
-                  className={`mt-2 flex h-12 w-12 cursor-pointer items-center justify-center rounded-lg border border-dashed border-white/20 text-zinc-500 transition hover:border-white/40 hover:text-zinc-300 ${
-                    isRegenerateModalGenerating || localReferenceImages.length >= MAX_LOCAL_REFERENCE_IMAGES
-                      ? "cursor-not-allowed opacity-50"
-                      : ""
-                  }`}
-                  title={localReferenceImages.length >= MAX_LOCAL_REFERENCE_IMAGES ? "Max images reached" : "Add image"}
-                >
-                  <Plus size={18} aria-hidden="true" />
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    multiple
-                    disabled={isRegenerateModalGenerating || localReferenceImages.length >= MAX_LOCAL_REFERENCE_IMAGES}
-                    className="sr-only"
-                    onChange={(event) => {
-                      handleLocalReferenceImages(event.target.files).catch((imageError) => {
-                        setLocalImageError(
-                          imageError instanceof Error ? imageError.message : "Could not read this image."
-                        );
-                      });
-                      event.target.value = "";
-                    }}
-                  />
-                </label>
-                {localImageError ? (
-                  <div className="mt-1 text-xs leading-5 text-amber-200">{localImageError}</div>
-                ) : null}
-
-              {/* Refinement textarea — hidden when in edit text mode */}
               {!isEditTextMode ? (
-                <textarea
-                  id="regenerate-refinement"
-                  value={refinement}
-                  onChange={(event) => setRefinement(event.target.value)}
-                  rows={4}
-                  disabled={isRegenerateModalGenerating}
-                  placeholder="Describe your adjustment..."
-                  className="w-full resize-none rounded-lg border border-white/10 bg-black/40 p-4 text-sm leading-relaxed text-zinc-100 outline-none ring-1 ring-lime-300/20 placeholder:text-zinc-600 focus:ring-2 focus:ring-lime-300/50 disabled:cursor-not-allowed disabled:opacity-50"
-                />
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 overflow-x-auto pb-1">
+                    <label
+                      className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-dashed border-white/20 bg-white/[0.03] text-zinc-500 transition hover:border-white/40 hover:bg-white/[0.06] hover:text-zinc-300 ${
+                        isRegenerateModalGenerating || localReferenceImages.length >= MAX_LOCAL_REFERENCE_IMAGES
+                          ? "cursor-not-allowed opacity-50"
+                          : ""
+                      }`}
+                      title={localReferenceImages.length >= MAX_LOCAL_REFERENCE_IMAGES ? "Max images reached" : "Add image"}
+                      aria-label="Add local reference image"
+                    >
+                      <Plus size={18} aria-hidden="true" />
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        multiple
+                        disabled={isRegenerateModalGenerating || localReferenceImages.length >= MAX_LOCAL_REFERENCE_IMAGES}
+                        className="sr-only"
+                        onChange={(event) => {
+                          handleLocalReferenceImages(event.target.files).catch((imageError) => {
+                            setLocalImageError(
+                              imageError instanceof Error ? imageError.message : "Could not read this image."
+                            );
+                          });
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                    {localReferenceImages.map((image, index) => (
+                      <div key={image.id} className="group relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black/30">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={image.dataUrl}
+                          alt={`Local reference ${index + 1}`}
+                          className="h-full w-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeLocalReferenceImage(image.id)}
+                          disabled={isRegenerateModalGenerating}
+                          aria-label={`Remove local reference ${index + 1}`}
+                          className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded bg-black/70 text-zinc-300 opacity-0 transition hover:bg-red-500/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 group-hover:opacity-100 focus:opacity-100"
+                        >
+                          <X size={12} aria-hidden="true" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  {localImageError ? (
+                    <div className="text-xs leading-5 text-amber-200">{localImageError}</div>
+                  ) : null}
+
+                  <textarea
+                    id="regenerate-refinement"
+                    value={refinement}
+                    onChange={(event) => setRefinement(event.target.value)}
+                    rows={4}
+                    disabled={isRegenerateModalGenerating}
+                    placeholder="Describe your adjustment..."
+                    className="w-full resize-none rounded-lg border border-white/10 bg-black/40 p-4 text-sm leading-relaxed text-zinc-100 outline-none ring-1 ring-lime-300/20 placeholder:text-zinc-600 focus:ring-2 focus:ring-lime-300/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </div>
               ) : null}
 
               {/* Editable text lines — shown when in edit text mode */}
@@ -1369,9 +1343,9 @@ export default function Home() {
               ) : null}
 
               {/* Bottom action row */}
-              <div className="mt-4 flex items-center justify-between gap-4">
+              <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 {/* Left: Font Reference + Edit Text buttons */}
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2">
                   {/* Font Reference toggle */}
                   <button
                     type="button"
@@ -1409,6 +1383,85 @@ export default function Home() {
                       Prompt Mode
                     </button>
                   )}
+                  <label className="flex h-10 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.025] px-2 text-zinc-400 transition focus-within:border-white/20 focus-within:ring-2 focus-within:ring-lime-300/40">
+                    <Maximize2 size={14} aria-hidden="true" />
+                    <span className="sr-only">Aspect ratio</span>
+                    <select
+                      value={regenerateModal.aspectRatio}
+                      onChange={(event) => {
+                        const aspectRatio = event.target.value as KieAspectRatio;
+                        setRegenerateModal((modal) =>
+                          modal
+                            ? {
+                                ...modal,
+                                aspectRatio,
+                                resolution: normalizeOutputResolution(aspectRatio, modal.resolution),
+                              }
+                            : modal
+                        );
+                        setOutputSizeNotice("");
+                      }}
+                      disabled={isRegenerateModalGenerating}
+                      className="h-8 cursor-pointer bg-transparent font-mono text-xs text-zinc-300 outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {OUTPUT_ASPECT_RATIOS.map((aspectRatio) => (
+                        <option key={aspectRatio} value={aspectRatio}>
+                          {aspectRatio}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div
+                    className="flex h-10 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.025] px-1.5"
+                    aria-label="Resolution"
+                    role="group"
+                  >
+                    <Gauge size={14} aria-hidden="true" className="ml-0.5 text-zinc-500" />
+                    {OUTPUT_RESOLUTIONS.map((resolution) => {
+                      const isSelected = regenerateModal.resolution === resolution;
+                      const isValid = isValidOutputSize(regenerateModal.aspectRatio, resolution);
+                      const invalidReason =
+                        regenerateModal.aspectRatio === "1:1" && resolution === "4K"
+                          ? "4K is unavailable for 1:1. Choose another ratio first."
+                          : regenerateModal.aspectRatio === "auto" && resolution !== "1K"
+                            ? "Auto ratio only supports 1K."
+                            : "";
+
+                      return (
+                        <button
+                          key={resolution}
+                          type="button"
+                          onClick={() => {
+                            if (!isValid) {
+                              setOutputSizeNotice(invalidReason);
+                              return;
+                            }
+                            setRegenerateModal((modal) =>
+                              modal
+                                ? {
+                                    ...modal,
+                                    resolution,
+                                  }
+                                : modal
+                            );
+                            setOutputSizeNotice("");
+                          }}
+                          disabled={isRegenerateModalGenerating}
+                          title={invalidReason || `Use ${resolution} output`}
+                          aria-pressed={isSelected}
+                          className={`h-7 min-w-8 rounded-md px-2 font-mono text-[11px] font-semibold transition ${
+                            isSelected
+                              ? "bg-lime-300 text-zinc-950"
+                              : isValid
+                                ? "text-zinc-400 hover:bg-white/10 hover:text-zinc-100"
+                                : "cursor-help text-zinc-600 hover:bg-amber-300/10 hover:text-amber-200"
+                          } disabled:cursor-not-allowed disabled:opacity-50`}
+                        >
+                          {resolution}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* Generate button */}
@@ -1425,7 +1478,7 @@ export default function Home() {
                         (block) => (editedTexts[block.id] ?? block.text).trim() !== block.text.trim()
                       ))
                   }
-                  className="flex items-center gap-2 rounded-lg bg-lime-300 px-6 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+                  className="flex items-center gap-2 self-start rounded-lg bg-lime-300 px-6 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400 sm:self-auto"
                 >
                   {isRegenerating ? (
                     <>
@@ -1440,6 +1493,10 @@ export default function Home() {
                   )}
                 </button>
               </div>
+
+              {outputSizeNotice ? (
+                <div className="mt-2 text-xs leading-5 text-amber-200">{outputSizeNotice}</div>
+              ) : null}
 
               {/* Error message */}
               {regenerateError ? (
