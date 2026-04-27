@@ -191,10 +191,10 @@ export function aspectRatioFromSize(size: string): KieAspectRatio {
     ["4:3", 4 / 3],
     ["3:4", 3 / 4],
   ];
-  const [best, bestRatio] = candidates.reduce((current, candidate) => {
+  const [best] = candidates.reduce((current, candidate) => {
     return Math.abs(candidate[1] - ratio) < Math.abs(current[1] - ratio) ? candidate : current;
   });
-  return Math.abs(bestRatio - ratio) < 0.04 ? best : "auto";
+  return best;
 }
 
 export function resolutionFromSize(size: string, aspectRatio = aspectRatioFromSize(size)): KieResolution {

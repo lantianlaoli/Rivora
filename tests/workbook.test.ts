@@ -130,6 +130,12 @@ test("maps 1600*1600 to the KIE square aspect ratio", () => {
   assert.equal(resolutionFromSize("1600*1600"), "2K");
 });
 
+test("chooses the closest KIE aspect ratio when a spreadsheet size is present", () => {
+  assert.equal(aspectRatioFromSize("1200*800"), "4:3");
+  assert.equal(aspectRatioFromSize("2000*1000"), "16:9");
+  assert.equal(aspectRatioFromSize("not provided"), "auto");
+});
+
 test("chooses KIE resolution tiers from requested pixel size", () => {
   assert.equal(resolutionFromSize("800*800"), "1K");
   assert.equal(resolutionFromSize("1600*900"), "2K");
