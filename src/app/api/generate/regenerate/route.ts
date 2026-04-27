@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createKieImageTask, getKieCallbackUrl, uploadKieImage } from "@/lib/kie";
 import { setStoredJobStatus } from "@/lib/job-store";
-import type { GenerationJob } from "@/lib/types";
+import type { GenerationJob, KieAspectRatio, KieResolution } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -9,6 +9,8 @@ export const maxDuration = 120;
 const MAX_LOCAL_IMAGES = 4;
 const MAX_LOCAL_IMAGE_BYTES = 10 * 1024 * 1024;
 const LOCAL_IMAGE_DATA_URL_PATTERN = /^data:(image\/(?:png|jpe?g|webp));base64,([A-Za-z0-9+/=]+)$/;
+const KIE_ASPECT_RATIOS = new Set<KieAspectRatio>(["auto", "1:1", "9:16", "16:9", "4:3", "3:4"]);
+const KIE_RESOLUTIONS = new Set<KieResolution>(["1K", "2K", "4K"]);
 
 class LocalImageValidationError extends Error {}
 
@@ -29,6 +31,14 @@ function decodedBase64ByteLength(value: string) {
 function sanitizeFileName(value: string, index: number) {
   const sanitized = value.trim().replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 80);
   return sanitized || `local-reference-${index + 1}.png`;
+}
+
+function validateOutputSize(aspectRatio: KieAspectRatio, resolution: KieResolution) {
+  if (!KIE_ASPECT_RATIOS.has(aspectRatio)) return "Invalid output aspect ratio.";
+  if (!KIE_RESOLUTIONS.has(resolution)) return "Invalid output resolution.";
+  if (aspectRatio === "auto" && resolution !== "1K") return "Auto aspect ratio only supports 1K resolution.";
+  if (aspectRatio === "1:1" && resolution === "4K") return "1:1 aspect ratio does not support 4K resolution.";
+  return "";
 }
 
 async function uploadLocalImages(
@@ -61,10 +71,14 @@ export async function POST(request: Request) {
       refinement?: string;
       resultUrl?: string;
       localImages?: Array<{ fileName?: string; dataUrl?: string }>;
+      aspectRatio?: KieAspectRatio;
+      resolution?: KieResolution;
     };
     const job = body.job;
     const resultUrl = body.resultUrl?.trim() || job?.resultUrl?.trim();
     const refinement = body.refinement?.trim();
+    const aspectRatio = body.aspectRatio ?? job?.aspectRatio;
+    const resolution = body.resolution ?? job?.resolution;
 
     if (!job?.rowId || !job.taskId) {
       return NextResponse.json({ error: "A completed generation job is required." }, { status: 400 });
@@ -74,6 +88,13 @@ export async function POST(request: Request) {
     }
     if (!refinement) {
       return NextResponse.json({ error: "Refinement text is required." }, { status: 400 });
+    }
+    if (!aspectRatio || !resolution) {
+      return NextResponse.json({ error: "Output size is required." }, { status: 400 });
+    }
+    const sizeError = validateOutputSize(aspectRatio, resolution);
+    if (sizeError) {
+      return NextResponse.json({ error: sizeError }, { status: 400 });
     }
 
     const localImageUrls = await uploadLocalImages(body.localImages);
@@ -92,8 +113,8 @@ export async function POST(request: Request) {
     const taskId = await createKieImageTask({
       prompt,
       inputUrls: [resultUrl, ...localImageUrls],
-      aspectRatio: job.aspectRatio,
-      resolution: job.resolution,
+      aspectRatio,
+      resolution,
       callBackUrl: getKieCallbackUrl(),
     });
 
@@ -109,6 +130,8 @@ export async function POST(request: Request) {
       taskId,
       status: "waiting",
       prompt,
+      aspectRatio,
+      resolution,
       resultUrl: undefined,
       error: undefined,
     };

@@ -21,13 +21,19 @@ import {
   Rows3,
   Type,
   Plus,
-  Upload,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import type { FormEvent } from "react";
-import type { GenerationJob, ParsedWorkbook, ParsedWorkbookRow, TextBlock } from "@/lib/types";
+import type {
+  GenerationJob,
+  KieAspectRatio,
+  KieResolution,
+  ParsedWorkbook,
+  ParsedWorkbookRow,
+  TextBlock,
+} from "@/lib/types";
 
 type Status = "idle" | "parsing" | "ready" | "starting" | "polling" | "done" | "error";
 type UploadProgress = {
@@ -40,6 +46,8 @@ type RegenerateModalState = {
   fontReferenceUrl?: string;
   textBlocks?: TextBlock[];
   localImages?: LocalReferenceImage[];
+  aspectRatio: KieAspectRatio;
+  resolution: KieResolution;
 };
 type LocalReferenceImage = {
   id: string;
@@ -61,6 +69,8 @@ const FONT_REFERENCE_PREFIX =
 const MAX_LOCAL_REFERENCE_IMAGES = 4;
 const MAX_LOCAL_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
 const LOCAL_REFERENCE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const OUTPUT_ASPECT_RATIOS: KieAspectRatio[] = ["auto", "1:1", "9:16", "16:9", "4:3", "3:4"];
+const OUTPUT_RESOLUTIONS: KieResolution[] = ["1K", "2K", "4K"];
 const DEFAULT_PAGE_STATE: PersistedPageState = {
   workbook: null,
   includeMainImageRow: false,
@@ -68,6 +78,19 @@ const DEFAULT_PAGE_STATE: PersistedPageState = {
   status: "idle",
   isProductDescriptionExpanded: false,
 };
+
+function isValidOutputSize(aspectRatio: KieAspectRatio, resolution: KieResolution) {
+  if (aspectRatio === "auto") return resolution === "1K";
+  if (aspectRatio === "1:1") return resolution !== "4K";
+  return true;
+}
+
+function normalizeOutputResolution(aspectRatio: KieAspectRatio, resolution: KieResolution): KieResolution {
+  if (isValidOutputSize(aspectRatio, resolution)) return resolution;
+  if (aspectRatio === "auto") return "1K";
+  if (aspectRatio === "1:1") return "2K";
+  return resolution;
+}
 
 function allRows(workbook: ParsedWorkbook | null, includeMain: boolean) {
   if (!workbook) return [];
@@ -445,6 +468,8 @@ export default function Home() {
         ...modal,
         job: updatedJob,
         resultUrl: updatedJob.resultUrl,
+        aspectRatio: updatedJob.aspectRatio,
+        resolution: updatedJob.resolution,
       };
     });
     if (nextJobs.every((job) => job.status === "success" || job.status === "fail")) {
@@ -538,20 +563,16 @@ export default function Home() {
     }
   }
 
-  function removeLocalReferenceImage(imageId: string) {
-    setRegenerateModal((modal) =>
-      modal
-        ? {
-            ...modal,
-            localImages: (modal.localImages ?? []).filter((image) => image.id !== imageId),
-          }
-        : modal
-    );
-  }
-
   function openRegenerateModal(job: GenerationJob) {
     if (!job.resultUrl) return;
-    setRegenerateModal({ job, resultUrl: job.resultUrl, fontReferenceUrl: undefined, localImages: [] });
+    setRegenerateModal({
+      job,
+      resultUrl: job.resultUrl,
+      fontReferenceUrl: undefined,
+      localImages: [],
+      aspectRatio: job.aspectRatio,
+      resolution: job.resolution,
+    });
     setRefinement("");
     setRegenerateError("");
     setLocalImageError("");
@@ -622,6 +643,12 @@ export default function Home() {
       finalRefinement =
         "Use the uploaded local reference image(s) as visual guidance for the requested image-to-image edit.";
     }
+    if (!finalRefinement.trim() && (
+      regenerateModal.aspectRatio !== regenerateModal.job.aspectRatio ||
+      regenerateModal.resolution !== regenerateModal.job.resolution
+    )) {
+      finalRefinement = "Regenerate the image with the selected output size while preserving the current design.";
+    }
 
     // Append font reference if set
     const fontRefText = regenerateModal.fontReferenceUrl
@@ -636,6 +663,8 @@ export default function Home() {
           job: regenerateModal.job,
           resultUrl: regenerateModal.resultUrl,
           refinement: finalRefinement + fontRefText,
+          aspectRatio: regenerateModal.aspectRatio,
+          resolution: regenerateModal.resolution,
           localImages: localImages.map((image) => ({
             fileName: image.fileName,
             dataUrl: image.dataUrl,
@@ -656,6 +685,8 @@ export default function Home() {
               job: nextJob,
               resultUrl: nextJob.resultUrl,
               fontReferenceUrl: undefined,
+              aspectRatio: nextJob.aspectRatio,
+              resolution: nextJob.resolution,
             }
           : modal
       );
@@ -740,6 +771,11 @@ export default function Home() {
   const isRegenerateModalFailed = regenerateModalStatus === "fail";
   const localReferenceImages = regenerateModal?.localImages ?? [];
   const hasLocalReferenceImages = localReferenceImages.length > 0;
+  const hasOutputSizeChange = Boolean(
+    regenerateModal &&
+      (regenerateModal.aspectRatio !== regenerateModal.job.aspectRatio ||
+        regenerateModal.resolution !== regenerateModal.job.resolution)
+  );
 
   return (
     <main className="min-h-screen bg-[#10100f] text-zinc-100">
@@ -1166,6 +1202,68 @@ export default function Home() {
 
             {/* Prompt + action section */}
             <form onSubmit={submitRegeneration} className="flex flex-col p-5">
+              <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase text-zinc-500">
+                    <Maximize2 size={13} aria-hidden="true" />
+                    Aspect ratio
+                  </span>
+                  <select
+                    value={regenerateModal.aspectRatio}
+                    onChange={(event) => {
+                      const aspectRatio = event.target.value as KieAspectRatio;
+                      setRegenerateModal((modal) =>
+                        modal
+                          ? {
+                              ...modal,
+                              aspectRatio,
+                              resolution: normalizeOutputResolution(aspectRatio, modal.resolution),
+                            }
+                          : modal
+                      );
+                    }}
+                    disabled={isRegenerateModalGenerating}
+                    className="h-10 w-full rounded-md border border-white/10 bg-black/40 px-3 font-mono text-sm text-zinc-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-lime-300/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {OUTPUT_ASPECT_RATIOS.map((aspectRatio) => (
+                      <option key={aspectRatio} value={aspectRatio}>
+                        {aspectRatio}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase text-zinc-500">
+                    <Gauge size={13} aria-hidden="true" />
+                    Resolution
+                  </span>
+                  <select
+                    value={regenerateModal.resolution}
+                    onChange={(event) =>
+                      setRegenerateModal((modal) =>
+                        modal
+                          ? {
+                              ...modal,
+                              resolution: event.target.value as KieResolution,
+                            }
+                          : modal
+                      )
+                    }
+                    disabled={isRegenerateModalGenerating}
+                    className="h-10 w-full rounded-md border border-white/10 bg-black/40 px-3 font-mono text-sm text-zinc-100 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-lime-300/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {OUTPUT_RESOLUTIONS.map((resolution) => (
+                      <option
+                        key={resolution}
+                        value={resolution}
+                        disabled={!isValidOutputSize(regenerateModal.aspectRatio, resolution)}
+                      >
+                        {resolution}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
               <label
                   className={`mt-2 flex h-12 w-12 cursor-pointer items-center justify-center rounded-lg border border-dashed border-white/20 text-zinc-500 transition hover:border-white/40 hover:text-zinc-300 ${
                     isRegenerateModalGenerating || localReferenceImages.length >= MAX_LOCAL_REFERENCE_IMAGES
@@ -1319,8 +1417,9 @@ export default function Home() {
                   disabled={
                     isRegenerateModalGenerating ||
                     !regenerateModal.resultUrl ||
-                    (!isEditTextMode && !refinement.trim() && !hasLocalReferenceImages) ||
+                    (!isEditTextMode && !refinement.trim() && !hasLocalReferenceImages && !hasOutputSizeChange) ||
                     (isEditTextMode &&
+                      !hasOutputSizeChange &&
                       !hasLocalReferenceImages &&
                       !regenerateModal.textBlocks?.some(
                         (block) => (editedTexts[block.id] ?? block.text).trim() !== block.text.trim()

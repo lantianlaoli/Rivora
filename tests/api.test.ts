@@ -154,6 +154,8 @@ test("POST /api/generate/regenerate creates a new task from the current result i
           job,
           resultUrl: job.resultUrl,
           refinement: "Make the headline larger and brighten the background.",
+          aspectRatio: "16:9",
+          resolution: "4K",
         }),
       })
     );
@@ -164,9 +166,11 @@ test("POST /api/generate/regenerate creates a new task from the current result i
     assert.equal(payload.job.taskId, "regenerated-task");
     assert.equal(payload.job.status, "waiting");
     assert.equal(payload.job.resultUrl, undefined);
+    assert.equal(payload.job.aspectRatio, "16:9");
+    assert.equal(payload.job.resolution, "4K");
     assert.equal(capturedCreateTaskBody.input.input_urls[0], "https://example.com/original.png");
-    assert.equal(capturedCreateTaskBody.input.aspect_ratio, "1:1");
-    assert.equal(capturedCreateTaskBody.input.resolution, "2K");
+    assert.equal(capturedCreateTaskBody.input.aspect_ratio, "16:9");
+    assert.equal(capturedCreateTaskBody.input.resolution, "4K");
     assert.match(capturedCreateTaskBody.input.prompt, /Refinement request:/);
     assert.match(capturedCreateTaskBody.input.prompt, /headline larger/);
   } finally {
@@ -177,6 +181,38 @@ test("POST /api/generate/regenerate creates a new task from the current result i
       process.env.KIE_API_KEY = originalKieApiKey;
     }
   }
+});
+
+test("POST /api/generate/regenerate rejects invalid output size combinations", async () => {
+  const job: GenerationJob = {
+    rowId: "row-3",
+    rowNumber: 3,
+    sequence: "2",
+    taskId: "original-task",
+    status: "success",
+    resultUrl: "https://example.com/original.png",
+    prompt: "Original product prompt",
+    aspectRatio: "1:1",
+    resolution: "2K",
+    sourceRow: { cells: { A: "2" } },
+  };
+
+  const response = await regenerateImage(
+    new Request("http://localhost:3000/api/generate/regenerate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        job,
+        resultUrl: job.resultUrl,
+        refinement: "Use a larger output.",
+        aspectRatio: "1:1",
+        resolution: "4K",
+      }),
+    })
+  );
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "1:1 aspect ratio does not support 4K resolution." });
 });
 
 test("POST /api/generate/regenerate uploads local reference images and passes them to KIE", async () => {
