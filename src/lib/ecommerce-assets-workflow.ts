@@ -44,15 +44,16 @@ function overallStatus(job: EcommerceAssetsJob): EcommerceAssetsJob["status"] {
 async function createImageSlots(input: {
   brief: EcommerceCreativeBrief;
   productImageUrl: string;
+  productImageUrls: string[];
   textLanguage: EcommerceTextLanguage;
 }) {
-  const promptSlots = buildEcommerceImagePrompts(input.brief, input.textLanguage);
+  const promptSlots = buildEcommerceImagePrompts(input.brief, input.textLanguage, input.productImageUrls.length);
   const slots: EcommerceImageSlot[] = [];
 
   for (const promptSlot of promptSlots) {
     const taskId = await createKieImageTask({
       prompt: promptSlot.prompt,
-      inputUrls: [input.productImageUrl],
+      inputUrls: input.productImageUrls,
       aspectRatio: "1:1",
       resolution: "2K",
     });
@@ -74,7 +75,7 @@ async function createImageSlots(input: {
 }
 
 export async function createEcommerceAssetsJob(input: {
-  productPhotoDataUrl: string;
+  productPhotoDataUrls: string[];
   textLanguage?: unknown;
 }) {
   const textLanguage = normalizeTextLanguage(input.textLanguage);
@@ -96,24 +97,27 @@ export async function createEcommerceAssetsJob(input: {
   addEcommerceAssetsJob(job);
 
   try {
-    const productImageUrl = await uploadKieImage(
-      input.productPhotoDataUrl,
-      `ecommerce-product-${jobId}.jpg`,
-      "rivora/ecommerce-assets"
+    const viewLabels = ["front", "side", "back"];
+    const uploadResults = await Promise.all(
+      input.productPhotoDataUrls.map((dataUrl, i) =>
+        uploadKieImage(dataUrl, `ecommerce-product-${viewLabels[i] ?? i}-${jobId}.jpg`, "rivora/ecommerce-assets")
+      )
     );
+    const productImageUrls = uploadResults;
+    const productImageUrl = productImageUrls[0];
     let brief: EcommerceCreativeBrief;
     try {
-      brief = await analyzeProductForEcommerceAssets(productImageUrl, textLanguage);
+      brief = await analyzeProductForEcommerceAssets(productImageUrls, textLanguage);
     } catch (error) {
       console.error("[ecommerce-assets] Falling back after product analysis failed:", error);
       brief = fallbackEcommerceBrief(textLanguage);
     }
 
-    const imageSlots = await createImageSlots({ brief, productImageUrl, textLanguage });
-    const storyboardPrompt = buildEcommerceStoryboardPrompt(brief, textLanguage);
+    const imageSlots = await createImageSlots({ brief, productImageUrl, productImageUrls, textLanguage });
+    const storyboardPrompt = buildEcommerceStoryboardPrompt(brief, textLanguage, productImageUrls.length);
     const storyboardTaskId = await createKieImageTask({
       prompt: storyboardPrompt,
-      inputUrls: [productImageUrl],
+      inputUrls: productImageUrls,
       aspectRatio: "1:1",
       resolution: "2K",
     });
@@ -122,12 +126,13 @@ export async function createEcommerceAssetsJob(input: {
       ...job,
       status: "processing",
       productImageUrl,
+      productImageUrls,
       brief,
       ...imageSlots,
       video: {
         storyboardTaskId,
         status: "waiting",
-        prompt: buildEcommerceVideoPrompt(brief, textLanguage),
+        prompt: buildEcommerceVideoPrompt(brief, textLanguage, productImageUrls.length),
       },
       updatedAt: Date.now(),
     };
@@ -183,9 +188,12 @@ export async function refreshEcommerceAssetsJob(jobId: string) {
     video.status !== "fail" &&
     currentJob.productImageUrl
   ) {
+    const productRefs = currentJob.productImageUrls && currentJob.productImageUrls.length > 0
+      ? currentJob.productImageUrls
+      : [currentJob.productImageUrl];
     const taskId = await createKieSeedanceVideoTask({
       prompt: video.prompt,
-      referenceImageUrls: [currentJob.productImageUrl, video.storyboardUrl],
+      referenceImageUrls: [...productRefs, video.storyboardUrl],
       aspectRatio: "1:1",
       resolution: "720p",
       duration: 15,

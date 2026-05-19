@@ -64,9 +64,16 @@ function normalizeBrief(value: Partial<EcommerceCreativeBrief> | null, textLangu
 }
 
 export async function analyzeProductForEcommerceAssets(
-  productImageUrl: string,
+  productImageUrls: string[],
   textLanguage: EcommerceTextLanguage
 ): Promise<EcommerceCreativeBrief> {
+  const viewLabels = ["front view", "side view", "back view"];
+  const imageContent = productImageUrls.map((url, i) => ({
+    type: "image_url" as const,
+    image_url: { url },
+  }));
+  const imageDescriptions = productImageUrls.map((_, i) => viewLabels[i] ?? `photo ${i + 1}`).join(", ");
+
   const response = await callOpenRouter<Partial<EcommerceCreativeBrief>>(
     [
       {
@@ -75,14 +82,16 @@ export async function analyzeProductForEcommerceAssets(
           {
             type: "text",
             text: [
-              "Analyze the uploaded product photo for an ecommerce image and video asset generator.",
+              "Analyze the uploaded product photos for an ecommerce image and video asset generator.",
+              `The user provided ${productImageUrls.length} product photo(s): ${imageDescriptions}.`,
               "Return only JSON with these fields:",
               "productCategory, productIdentity, materialsAndColors, sellingPoints, designLanguage, carouselDirection, detailDirection, videoDirection.",
               "The creative direction must be clean, premium, low-text, product-led, and suitable for marketplace carousel/detail images.",
+              "Use all views to build a comprehensive understanding of the product's shape, materials, and features.",
               `Visible text language for generated assets: ${textLanguage === "zh" ? "Chinese" : "English"}.`,
             ].join("\n"),
           },
-          { type: "image_url", image_url: { url: productImageUrl } },
+          ...imageContent,
         ],
       },
     ],
@@ -91,11 +100,19 @@ export async function analyzeProductForEcommerceAssets(
   return normalizeBrief(response, textLanguage);
 }
 
-function baseImagePrompt(brief: EcommerceCreativeBrief, textLanguage: EcommerceTextLanguage) {
+function viewReferenceNote(numViews: number) {
+  if (numViews <= 1) return "";
+  return numViews === 3
+    ? "Three product reference images are provided: front view, side view, and back view. Use all views together to build a complete 3D understanding of the product shape, depth, materials, and features. The front view is the primary reference; side and back views ensure accuracy from every angle."
+    : `Multiple product reference images (${numViews}) are provided. Use all views together to fully understand the product shape, materials, and features.`;
+}
+
+function baseImagePrompt(brief: EcommerceCreativeBrief, textLanguage: EcommerceTextLanguage, numViews = 1) {
   return [
-    "Create one finished ecommerce product image using the uploaded product photo as the identity reference.",
+    `Create one finished ecommerce product image using the uploaded product photo${numViews > 1 ? "s" : ""} as the identity reference.`,
+    viewReferenceNote(numViews),
     "Canvas/aspect ratio: 1:1.",
-    "Preserve the exact product identity, proportions, materials, colors, structure, logo placement if present, and recognizable details.",
+    "Preserve the exact product identity, proportions, materials, colors, structure, logo placement if present, and recognizable details from every visible angle.",
     "Use one unified design language across the full carousel and detail image set.",
     `Product category: ${brief.productCategory}.`,
     `Product identity: ${brief.productIdentity}.`,
@@ -105,14 +122,15 @@ function baseImagePrompt(brief: EcommerceCreativeBrief, textLanguage: EcommerceT
     languageInstruction(textLanguage),
     "Keep the overall image clean, premium, spacious, and product-led.",
     "Do not add fake brand logos, dense copy, clutter, watermarks, QR codes, pricing, badges, or unrelated props.",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 export function buildEcommerceImagePrompts(
   brief: EcommerceCreativeBrief,
-  textLanguage: EcommerceTextLanguage
+  textLanguage: EcommerceTextLanguage,
+  numViews = 1
 ): PromptSlot[] {
-  const base = baseImagePrompt(brief, textLanguage);
+  const base = baseImagePrompt(brief, textLanguage, numViews);
   return [
     {
       kind: "carousel",
@@ -180,12 +198,15 @@ export function buildEcommerceImagePrompts(
 
 export function buildEcommerceStoryboardPrompt(
   brief: EcommerceCreativeBrief,
-  textLanguage: EcommerceTextLanguage
+  textLanguage: EcommerceTextLanguage,
+  numViews = 1
 ) {
   return [
-    "Create a square 15-second ecommerce ad storyboard image for the uploaded product.",
+    `Create a square 15-second ecommerce ad storyboard image for the uploaded product${numViews > 1 ? " from multiple angles" : ""}.`,
     "Canvas/aspect ratio: 1:1.",
-    "Use the product photo as the strict identity reference and preserve the exact product.",
+    numViews > 1
+      ? "Multiple product reference images are provided (front, side, back views). Use all views to accurately represent the product from different angles throughout the storyboard beats."
+      : "Use the product photo as the strict identity reference and preserve the exact product.",
     `Visible text language: ${textLanguage === "zh" ? "中文" : "English"}.`,
     "Storyboard structure: 6 clean beats in a grid: product reveal, macro detail, core benefit, use context, premium hero motion, final hero shot.",
     `Product category: ${brief.productCategory}.`,
@@ -197,10 +218,14 @@ export function buildEcommerceStoryboardPrompt(
   ].join("\n");
 }
 
-export function buildEcommerceVideoPrompt(brief: EcommerceCreativeBrief, textLanguage: EcommerceTextLanguage) {
+export function buildEcommerceVideoPrompt(brief: EcommerceCreativeBrief, textLanguage: EcommerceTextLanguage, numViews = 1) {
   const prompt = [
-    "Create a 15-second square ecommerce product advertisement using the provided product photo and storyboard image as visual references.",
-    "Use reference-image generation mode. Preserve the exact product appearance, proportions, materials, color, and recognizable details.",
+    numViews > 1
+      ? "Create a 15-second square ecommerce product advertisement using the provided product photos (front, side, and back views) and storyboard image as visual references."
+      : "Create a 15-second square ecommerce product advertisement using the provided product photo and storyboard image as visual references.",
+    numViews > 1
+      ? "Use reference-image generation mode. Multiple angles of the product are provided — use them all to accurately animate the product from different perspectives: reveal, rotate, and showcase the product from multiple sides."
+      : "Use reference-image generation mode. Preserve the exact product appearance, proportions, materials, color, and recognizable details.",
     "Animate through these beats: product reveal, macro detail, core selling point, clean use context, premium hero motion, final hero shot.",
     `Visible text and any generated audio language: ${textLanguage === "zh" ? "Chinese" : "English"}.`,
     `Product category: ${brief.productCategory}.`,

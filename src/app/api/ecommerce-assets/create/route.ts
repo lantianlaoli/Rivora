@@ -7,16 +7,24 @@ export const maxDuration = 300;
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
+      productPhotoDataUrls?: string[];
       productPhotoDataUrl?: string;
       textLanguage?: unknown;
     };
 
-    if (!body.productPhotoDataUrl) {
-      return NextResponse.json({ error: "productPhotoDataUrl is required." }, { status: 400 });
+    const productPhotoDataUrls = body.productPhotoDataUrls && body.productPhotoDataUrls.length > 0
+      ? body.productPhotoDataUrls
+      : body.productPhotoDataUrl
+        ? [body.productPhotoDataUrl]
+        : [];
+
+    const validUrls = productPhotoDataUrls.filter(Boolean);
+    if (validUrls.length === 0) {
+      return NextResponse.json({ error: "At least one productPhotoDataUrl is required." }, { status: 400 });
     }
 
     const job = await createEcommerceAssetsJob({
-      productPhotoDataUrl: body.productPhotoDataUrl,
+      productPhotoDataUrls: validUrls,
       textLanguage: body.textLanguage,
     });
 

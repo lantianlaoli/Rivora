@@ -71,6 +71,14 @@ export type EcommerceAssetKind = "carousel" | "detail" | "videoStoryboard" | "vi
 
 export type EcommerceSlotStatus = "waiting" | "processing" | "success" | "fail";
 
+export type EcommerceProductView = "front" | "side" | "back";
+
+export type EcommerceProductPhotoSlot = {
+  view: EcommerceProductView;
+  dataUrl: string | null;
+  fileName: string | null;
+};
+
 export type EcommerceCreativeBrief = {
   productCategory: string;
   productIdentity: string;
@@ -109,6 +117,7 @@ export type EcommerceAssetsJob = {
   status: "preparing" | "processing" | "completed" | "failed";
   textLanguage: EcommerceTextLanguage;
   productImageUrl?: string;
+  productImageUrls?: string[];
   brief?: EcommerceCreativeBrief;
   carouselImages: EcommerceImageSlot[];
   detailImages: EcommerceImageSlot[];

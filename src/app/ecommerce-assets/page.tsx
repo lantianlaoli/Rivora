@@ -19,6 +19,8 @@ import { getEcommerceVideoPresentation } from "@/lib/ecommerce-assets-presentati
 import type {
   EcommerceAssetsJob,
   EcommerceImageSlot,
+  EcommerceProductPhotoSlot,
+  EcommerceProductView,
   EcommerceSlotStatus,
   EcommerceTextLanguage,
 } from "@/lib/types";
@@ -27,6 +29,12 @@ type PageStatus = "idle" | "reading" | "starting" | "polling" | "done" | "error"
 
 const ACCEPTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+const VIEW_META: Record<EcommerceProductView, { label: string; sub: string }> = {
+  front: { label: "正视图", sub: "Front View" },
+  side: { label: "侧视图", sub: "Side View" },
+  back: { label: "背视图", sub: "Back View" },
+};
 
 function statusLabel(status: EcommerceSlotStatus) {
   if (status === "success") return "完成";
@@ -133,14 +141,110 @@ function SectionShell({
   );
 }
 
+function ProductPhotoSlot({
+  view,
+  photo,
+  isBusy,
+  readingView,
+  onUpload,
+  onRemove,
+  inputRef,
+}: {
+  view: EcommerceProductView;
+  photo: EcommerceProductPhotoSlot;
+  isBusy: boolean;
+  readingView: EcommerceProductView | null;
+  onUpload: (view: EcommerceProductView, file: File) => void;
+  onRemove: (view: EcommerceProductView) => void;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+}) {
+  const meta = VIEW_META[view];
+  const isReading = readingView === view;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-zinc-300">
+          {meta.label}
+          <span className="ml-1.5 text-[10px] text-zinc-600">{meta.sub}</span>
+        </span>
+        {view === "front" && (
+          <span className="rounded bg-lime-300/15 px-1.5 py-0.5 text-[10px] font-semibold text-lime-300">
+            必填
+          </span>
+        )}
+      </div>
+      <label className="group relative block cursor-pointer overflow-hidden rounded-md border border-dashed border-white/15 bg-black/20 transition hover:border-lime-300/40">
+        {photo.dataUrl ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photo.dataUrl}
+              alt={`${meta.label}产品照片`}
+              className="aspect-square w-full object-contain"
+            />
+            {!isBusy ? (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  onRemove(view);
+                }}
+                className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-black/70 text-white opacity-0 transition group-hover:opacity-100"
+                aria-label={`Remove ${meta.label}`}
+              >
+                <X size={13} aria-hidden="true" />
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <div className="flex aspect-square flex-col items-center justify-center gap-2 text-zinc-500">
+            {isReading ? (
+              <Loader2 size={22} aria-hidden="true" className="animate-spin" />
+            ) : (
+              <Upload size={22} aria-hidden="true" />
+            )}
+            <span className="text-[11px]">
+              {isReading ? "读取中…" : "点击上传"}
+            </span>
+          </div>
+        )}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          disabled={isBusy}
+          className="sr-only"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) onUpload(view, file);
+          }}
+        />
+      </label>
+    </div>
+  );
+}
+
 export default function EcommerceAssetsPage() {
   const [status, setStatus] = useState<PageStatus>("idle");
   const [textLanguage, setTextLanguage] = useState<EcommerceTextLanguage>("en");
-  const [productPhotoDataUrl, setProductPhotoDataUrl] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [productPhotos, setProductPhotos] = useState<EcommerceProductPhotoSlot[]>([
+    { view: "front", dataUrl: null, fileName: null },
+    { view: "side", dataUrl: null, fileName: null },
+    { view: "back", dataUrl: null, fileName: null },
+  ]);
+  const [readingView, setReadingView] = useState<EcommerceProductView | null>(null);
   const [job, setJob] = useState<EcommerceAssetsJob | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const frontInputRef = useRef<HTMLInputElement | null>(null);
+  const sideInputRef = useRef<HTMLInputElement | null>(null);
+  const backInputRef = useRef<HTMLInputElement | null>(null);
+
+  const inputRefs: Record<EcommerceProductView, React.RefObject<HTMLInputElement | null>> = {
+    front: frontInputRef,
+    side: sideInputRef,
+    back: backInputRef,
+  };
 
   const isBusy = status === "reading" || status === "starting" || status === "polling";
   const videoPresentation = getEcommerceVideoPresentation(job);
@@ -149,6 +253,10 @@ export default function EcommerceAssetsPage() {
       job?.detailImages.some((slot) => slot.resultUrl) ||
       job?.video.resultUrl
   );
+
+  const frontPhoto = productPhotos.find((p) => p.view === "front")!;
+  const hasFront = Boolean(frontPhoto.dataUrl);
+  const uploadedCount = productPhotos.filter((p) => p.dataUrl).length;
 
   const readImageFile = useCallback(async (file: File) => {
     if (!ACCEPTED_IMAGE_TYPES.has(file.type)) {
@@ -166,21 +274,36 @@ export default function EcommerceAssetsPage() {
     });
   }, []);
 
-  async function handleFile(file: File) {
+  async function handleFile(view: EcommerceProductView, file: File) {
+    setReadingView(view);
     setStatus("reading");
     setError(null);
     try {
       const dataUrl = await readImageFile(file);
-      setProductPhotoDataUrl(dataUrl);
-      setFileName(file.name);
+      setProductPhotos((prev) =>
+        prev.map((p) =>
+          p.view === view ? { ...p, dataUrl, fileName: file.name } : p
+        )
+      );
       setJob(null);
       setStatus("idle");
     } catch (fileError) {
       setError(fileError instanceof Error ? fileError.message : "图片处理失败。");
       setStatus("error");
     } finally {
-      if (inputRef.current) inputRef.current.value = "";
+      setReadingView(null);
+      const ref = inputRefs[view];
+      if (ref.current) ref.current.value = "";
     }
+  }
+
+  function handleRemove(view: EcommerceProductView) {
+    setProductPhotos((prev) =>
+      prev.map((p) =>
+        p.view === view ? { ...p, dataUrl: null, fileName: null } : p
+      )
+    );
+    setJob(null);
   }
 
   async function pollJob(jobId: string) {
@@ -194,19 +317,23 @@ export default function EcommerceAssetsPage() {
   }
 
   async function startGeneration() {
-    if (!productPhotoDataUrl) {
-      setError("请先上传一张产品照片。");
+    if (!hasFront) {
+      setError("请至少上传正视图产品照片。");
       return;
     }
     setStatus("starting");
     setError(null);
     setJob(null);
 
+    const uploadedUrls = productPhotos
+      .filter((p) => p.dataUrl)
+      .map((p) => p.dataUrl!);
+
     try {
       const response = await fetch("/api/ecommerce-assets/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productPhotoDataUrl, textLanguage }),
+        body: JSON.stringify({ productPhotoDataUrls: uploadedUrls, textLanguage }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "启动生成失败。");
@@ -262,7 +389,7 @@ export default function EcommerceAssetsPage() {
             </Link>
             <p className="font-mono text-2xl font-semibold tracking-tight text-zinc-100">电商图片 + 视频素材一键生成</p>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-              上传一个产品照片，自动生成轮播图、详情图和 1:1 Seedance 2 Fast 广告短片。
+              上传产品照片（正视图必填，侧视图和背视图可选），自动生成轮播图、详情图和 1:1 Seedance 2 Fast 广告短片。
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -284,50 +411,26 @@ export default function EcommerceAssetsPage() {
           <aside className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-semibold">产品照片</h2>
-              {fileName ? <span className="max-w-36 truncate text-xs text-zinc-500">{fileName}</span> : null}
+              <span className="text-xs text-zinc-500">
+                {uploadedCount}/3 已上传
+              </span>
             </div>
-            <label className="group relative block cursor-pointer overflow-hidden rounded-lg border border-dashed border-white/15 bg-black/20 transition hover:border-lime-300/40">
-              {productPhotoDataUrl ? (
-                <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={productPhotoDataUrl} alt="Uploaded product" className="aspect-square w-full object-contain" />
-                  {!isBusy ? (
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        setProductPhotoDataUrl(null);
-                        setFileName(null);
-                        setJob(null);
-                      }}
-                      className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/70 text-white opacity-0 transition group-hover:opacity-100"
-                      aria-label="Remove product photo"
-                    >
-                      <X size={16} aria-hidden="true" />
-                    </button>
-                  ) : null}
-                </>
-              ) : (
-                <div className="flex aspect-square flex-col items-center justify-center gap-3 text-zinc-400">
-                  {status === "reading" ? <Loader2 size={28} aria-hidden="true" className="animate-spin" /> : <Upload size={32} aria-hidden="true" />}
-                  <div className="text-center">
-                    <p className="text-sm font-semibold text-zinc-200">上传产品照片</p>
-                    <p className="mt-1 text-xs text-zinc-500">PNG / JPG / WEBP，最多 10MB</p>
-                  </div>
-                </div>
-              )}
-              <input
-                ref={inputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                disabled={isBusy}
-                className="sr-only"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) handleFile(file);
-                }}
-              />
-            </label>
+
+            <div className="flex flex-col gap-4">
+              {productPhotos.map((photo) => (
+                <ProductPhotoSlot
+                  key={photo.view}
+                  view={photo.view}
+                  photo={photo}
+                  isBusy={isBusy}
+                  readingView={readingView}
+                  onUpload={handleFile}
+                  onRemove={handleRemove}
+                  inputRef={inputRefs[photo.view]}
+                />
+              ))}
+            </div>
+
             {job?.brief ? (
               <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
                 <p className="text-xs font-semibold uppercase text-zinc-500">AI 创意方向</p>
@@ -354,7 +457,7 @@ export default function EcommerceAssetsPage() {
             </div>
             <button
               type="button"
-              disabled={!productPhotoDataUrl || isBusy}
+              disabled={!hasFront || isBusy}
               onClick={() => startGeneration()}
               className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-md bg-lime-300 text-sm font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
             >
