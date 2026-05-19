@@ -44,5 +44,8 @@ export async function callOpenRouter<T>(
   if (!content) {
     throw new Error("OpenRouter returned no content.");
   }
-  return JSON.parse(content) as T;
+
+  // Some models wrap JSON in markdown code blocks — strip them
+  const cleaned = content.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+  return JSON.parse(cleaned) as T;
 }

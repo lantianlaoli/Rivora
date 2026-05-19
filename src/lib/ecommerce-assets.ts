@@ -84,7 +84,7 @@ export async function analyzeProductForEcommerceAssets(
             text: [
               "Analyze the uploaded product photos for an ecommerce image and video asset generator.",
               `The user provided ${productImageUrls.length} product photo(s): ${imageDescriptions}.`,
-              "Return only JSON with these fields:",
+              "Return ONLY a JSON object (no markdown, no explanation) with these fields:",
               "productCategory, productIdentity, materialsAndColors, sellingPoints, designLanguage, carouselDirection, detailDirection, videoDirection.",
               "The creative direction must be clean, premium, low-text, product-led, and suitable for marketplace carousel/detail images.",
               "Use all views to build a comprehensive understanding of the product's shape, materials, and features.",
@@ -94,8 +94,7 @@ export async function analyzeProductForEcommerceAssets(
           ...imageContent,
         ],
       },
-    ],
-    { type: "json_object" }
+    ]
   );
   return normalizeBrief(response, textLanguage);
 }

@@ -105,7 +105,7 @@ export async function createEcommerceAssetsJob(input: {
     try {
       brief = await analyzeProductForEcommerceAssets(productImageUrls, textLanguage);
     } catch (error) {
-      console.error("[ecommerce-assets] Falling back after product analysis failed:", error);
+      console.error("[ecommerce-assets] Falling back after product analysis failed:", error instanceof Error ? error.message : error);
       brief = fallbackEcommerceBrief(textLanguage);
     }
 
