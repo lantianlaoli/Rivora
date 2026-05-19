@@ -1,6 +1,3 @@
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? "qwen/qwen3.6-plus";
-
 export type OpenRouterMessage = {
   role: "system" | "user" | "assistant";
   content: string | OpenRouterContentPart[];
@@ -16,6 +13,8 @@ export async function callOpenRouter<T>(
   messages: OpenRouterMessage[],
   responseFormat?: { type: "json_object" }
 ): Promise<T> {
+  const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+  const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? "qwen/qwen3.6-plus";
   if (!OPENROUTER_API_KEY) {
     throw new Error("OPENROUTER_API_KEY is not configured.");
   }

@@ -64,3 +64,56 @@ export type TextBlock = {
   position: string;
   size: "small" | "medium" | "large";
 };
+
+export type EcommerceTextLanguage = "en" | "zh";
+
+export type EcommerceAssetKind = "carousel" | "detail" | "videoStoryboard" | "video";
+
+export type EcommerceSlotStatus = "waiting" | "processing" | "success" | "fail";
+
+export type EcommerceCreativeBrief = {
+  productCategory: string;
+  productIdentity: string;
+  materialsAndColors: string;
+  sellingPoints: string[];
+  designLanguage: string;
+  carouselDirection: string;
+  detailDirection: string;
+  videoDirection: string;
+};
+
+export type EcommerceImageSlot = {
+  id: string;
+  kind: Extract<EcommerceAssetKind, "carousel" | "detail">;
+  index: number;
+  title: string;
+  taskId: string;
+  status: EcommerceSlotStatus;
+  resultUrl?: string;
+  error?: string;
+  prompt: string;
+};
+
+export type EcommerceVideoSlot = {
+  taskId?: string;
+  status: EcommerceSlotStatus;
+  storyboardTaskId?: string;
+  storyboardUrl?: string;
+  resultUrl?: string;
+  error?: string;
+  prompt: string;
+};
+
+export type EcommerceAssetsJob = {
+  id: string;
+  status: "preparing" | "processing" | "completed" | "failed";
+  textLanguage: EcommerceTextLanguage;
+  productImageUrl?: string;
+  brief?: EcommerceCreativeBrief;
+  carouselImages: EcommerceImageSlot[];
+  detailImages: EcommerceImageSlot[];
+  video: EcommerceVideoSlot;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+};

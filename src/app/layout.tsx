@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "XLSX Batch Image Generator",
-  description: "Generate product images from XLSX requirements and reference photos.",
+  title: "Rivora",
+  description: "Generate ecommerce product images and videos from product photos.",
 };
 
 export default function RootLayout({

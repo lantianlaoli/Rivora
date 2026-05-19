@@ -4,6 +4,7 @@ const CREATE_TASK_URL = "https://api.kie.ai/api/v1/jobs/createTask";
 const RECORD_INFO_URL = "https://api.kie.ai/api/v1/jobs/recordInfo";
 const UPLOAD_URL = "https://kieai.redpandaai.co/api/file-base64-upload";
 const MODEL = "gpt-image-2-image-to-image";
+const SEEDANCE_2_FAST_MODEL = "bytedance/seedance-2-fast";
 
 type KieRecordInfo = {
   code?: number;
@@ -111,6 +112,47 @@ export async function createKieImageTask(input: {
   return taskId;
 }
 
+export async function createKieSeedanceVideoTask(input: {
+  prompt: string;
+  referenceImageUrls: string[];
+  aspectRatio: "1:1" | "16:9" | "9:16";
+  resolution: "480p" | "720p";
+  duration: number;
+  callBackUrl?: string;
+}) {
+  const response = await fetchWithRetry(CREATE_TASK_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getKieApiKey()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: SEEDANCE_2_FAST_MODEL,
+      ...(input.callBackUrl ? { callBackUrl: input.callBackUrl } : {}),
+      input: {
+        prompt: input.prompt,
+        reference_image_urls: input.referenceImageUrls.filter(Boolean).slice(0, 9),
+        resolution: input.resolution,
+        aspect_ratio: input.aspectRatio,
+        duration: input.duration,
+        generate_audio: true,
+        web_search: false,
+        nsfw_checker: true,
+      },
+    }),
+  }, 5, 30000);
+
+  if (!response.ok) {
+    throw new Error(`KIE Seedance task creation failed: ${response.status} ${await response.text()}`);
+  }
+  const payload = await response.json();
+  const taskId = payload?.data?.taskId;
+  if (payload?.code !== 200 || typeof taskId !== "string") {
+    throw new Error(payload?.msg || "KIE Seedance task creation did not return a taskId.");
+  }
+  return taskId;
+}
+
 export function getKieCallbackUrl() {
   const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").trim().replace(/\/+$/, "");
   return baseUrl ? `${baseUrl}/api/generate/webhook` : undefined;
@@ -125,6 +167,12 @@ export function normalizeKieRecordInfo(payload: KieRecordInfo) {
     const parsed = JSON.parse(payload.data.resultJson);
     if (Array.isArray(parsed?.resultUrls) && typeof parsed.resultUrls[0] === "string") {
       resultUrl = parsed.resultUrls[0];
+    } else if (typeof parsed?.video_url === "string") {
+      resultUrl = parsed.video_url;
+    } else if (typeof parsed?.url === "string") {
+      resultUrl = parsed.url;
+    } else if (Array.isArray(parsed?.videos) && typeof parsed.videos[0] === "string") {
+      resultUrl = parsed.videos[0];
     }
   }
 
@@ -152,3 +200,5 @@ export async function getKieImageStatus(taskId: string) {
 
   return normalizeKieRecordInfo(payload);
 }
+
+export const getKieTaskStatus = getKieImageStatus;
