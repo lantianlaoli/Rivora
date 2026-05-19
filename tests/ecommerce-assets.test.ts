@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { POST as createEcommerceAssets } from "../src/app/api/ecommerce-assets/create/route";
-import { GET as getEcommerceAssetsStatus } from "../src/app/api/ecommerce-assets/status/route";
+import { POST as refreshEcommerceAssetsStatus } from "../src/app/api/ecommerce-assets/status/route";
 import { getEcommerceVideoPresentation } from "../src/lib/ecommerce-assets-presentation";
 import {
   buildEcommerceImagePrompts,
@@ -59,7 +59,7 @@ test("POST /api/ecommerce-assets/create rejects missing product photo", async ()
   );
 
   assert.equal(response.status, 400);
-  assert.deepEqual(await response.json(), { error: "productPhotoDataUrl is required." });
+  assert.deepEqual(await response.json(), { error: "At least one productPhotoDataUrl is required." });
 });
 
 test("POST /api/ecommerce-assets/create uploads the photo and starts six image tasks plus storyboard", async () => {
@@ -116,7 +116,7 @@ test("POST /api/ecommerce-assets/create uploads the photo and starts six image t
       new Request("http://localhost:3000/api/ecommerce-assets/create", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ productPhotoDataUrl: "data:image/png;base64,AA==", textLanguage: "en" }),
+        body: JSON.stringify({ productPhotoDataUrls: ["data:image/png;base64,AA=="], textLanguage: "en" }),
       })
     );
 
@@ -139,7 +139,7 @@ test("POST /api/ecommerce-assets/create uploads the photo and starts six image t
   }
 });
 
-test("GET /api/ecommerce-assets/status advances successful image and video tasks", async () => {
+test("POST /api/ecommerce-assets/status advances successful image and video tasks", async () => {
   const originalFetch = globalThis.fetch;
   const originalKieApiKey = process.env.KIE_API_KEY;
   const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
@@ -192,13 +192,17 @@ test("GET /api/ecommerce-assets/status advances successful image and video tasks
       new Request("http://localhost:3000/api/ecommerce-assets/create", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ productPhotoDataUrl: "data:image/png;base64,AA==", textLanguage: "en" }),
+        body: JSON.stringify({ productPhotoDataUrls: ["data:image/png;base64,AA=="], textLanguage: "en" }),
       })
     );
     const createPayload = await createResponse.json();
 
-    const firstStatusResponse = await getEcommerceAssetsStatus(
-      new Request(`http://localhost:3000/api/ecommerce-assets/status?jobId=${createPayload.jobId}`)
+    const firstStatusResponse = await refreshEcommerceAssetsStatus(
+      new Request("http://localhost:3000/api/ecommerce-assets/status", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ job: createPayload.job }),
+      })
     );
     assert.equal(firstStatusResponse.status, 200);
     const firstStatus = await firstStatusResponse.json();
@@ -207,8 +211,12 @@ test("GET /api/ecommerce-assets/status advances successful image and video tasks
     assert.equal(firstStatus.job.video.status, "processing");
     assert.equal(firstStatus.job.video.storyboardUrl, "https://cdn.example.com/image-task-7.mp4");
 
-    const secondStatusResponse = await getEcommerceAssetsStatus(
-      new Request(`http://localhost:3000/api/ecommerce-assets/status?jobId=${createPayload.jobId}`)
+    const secondStatusResponse = await refreshEcommerceAssetsStatus(
+      new Request("http://localhost:3000/api/ecommerce-assets/status", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ job: firstStatus.job }),
+      })
     );
     const secondStatus = await secondStatusResponse.json();
     assert.equal(secondStatus.job.video.status, "success");

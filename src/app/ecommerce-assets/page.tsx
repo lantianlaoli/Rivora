@@ -235,6 +235,7 @@ export default function EcommerceAssetsPage() {
   ]);
   const [readingView, setReadingView] = useState<EcommerceProductView | null>(null);
   const [job, setJob] = useState<EcommerceAssetsJob | null>(null);
+  const jobRef = useRef<EcommerceAssetsJob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const frontInputRef = useRef<HTMLInputElement | null>(null);
   const sideInputRef = useRef<HTMLInputElement | null>(null);
@@ -306,8 +307,14 @@ export default function EcommerceAssetsPage() {
     setJob(null);
   }
 
-  async function pollJob(jobId: string) {
-    const response = await fetch(`/api/ecommerce-assets/status?jobId=${encodeURIComponent(jobId)}`);
+  async function pollJob() {
+    const currentJob = jobRef.current;
+    if (!currentJob) return;
+    const response = await fetch("/api/ecommerce-assets/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job: currentJob }),
+    });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "查询生成状态失败。");
     setJob(payload.job);
@@ -368,15 +375,19 @@ export default function EcommerceAssetsPage() {
   }
 
   useEffect(() => {
-    if (status !== "polling" || !job?.id) return;
+    jobRef.current = job;
+  }, [job]);
+
+  useEffect(() => {
+    if (status !== "polling" || !job) return;
     const interval = window.setInterval(() => {
-      pollJob(job.id).catch((pollError) => {
+      pollJob().catch((pollError) => {
         setError(pollError instanceof Error ? pollError.message : "查询生成状态失败。");
         setStatus("error");
       });
     }, 5000);
     return () => window.clearInterval(interval);
-  }, [job?.id, status]);
+  }, [job, status]);
 
   return (
     <main className="min-h-screen bg-[#10100f] text-zinc-100">

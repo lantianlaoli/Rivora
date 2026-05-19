@@ -6,10 +6,7 @@ import {
   fallbackEcommerceBrief,
 } from "./ecommerce-assets";
 import {
-  addEcommerceAssetsJob,
   generateEcommerceAssetsJobId,
-  getEcommerceAssetsJob,
-  updateEcommerceAssetsJob,
 } from "./ecommerce-assets-store";
 import {
   createKieImageTask,
@@ -94,7 +91,6 @@ export async function createEcommerceAssetsJob(input: {
     createdAt: now,
     updatedAt: now,
   };
-  addEcommerceAssetsJob(job);
 
   try {
     const viewLabels = ["front", "side", "back"];
@@ -136,17 +132,9 @@ export async function createEcommerceAssetsJob(input: {
       },
       updatedAt: Date.now(),
     };
-    addEcommerceAssetsJob(job);
     return job;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create ecommerce assets job.";
-    const failedJob = {
-      ...job,
-      status: "failed" as const,
-      error: message,
-      updatedAt: Date.now(),
-    };
-    addEcommerceAssetsJob(failedJob);
     throw error;
   }
 }
@@ -163,10 +151,7 @@ async function refreshImageSlot(slot: EcommerceImageSlot): Promise<EcommerceImag
   return { ...slot, status: status.status };
 }
 
-export async function refreshEcommerceAssetsJob(jobId: string) {
-  const currentJob = getEcommerceAssetsJob(jobId);
-  if (!currentJob) return undefined;
-
+export async function refreshEcommerceAssetsJob(currentJob: EcommerceAssetsJob): Promise<EcommerceAssetsJob> {
   const carouselImages = await Promise.all(currentJob.carouselImages.map(refreshImageSlot));
   const detailImages = await Promise.all(currentJob.detailImages.map(refreshImageSlot));
   let video = { ...currentJob.video };
@@ -210,15 +195,14 @@ export async function refreshEcommerceAssetsJob(jobId: string) {
     }
   }
 
-  return updateEcommerceAssetsJob(jobId, (job) => {
-    const updated = {
-      ...job,
-      carouselImages,
-      detailImages,
-      video,
-    };
-    return { ...updated, status: overallStatus(updated) };
-  });
+  const updated = {
+    ...currentJob,
+    carouselImages,
+    detailImages,
+    video,
+    updatedAt: Date.now(),
+  };
+  return { ...updated, status: overallStatus(updated) };
 }
 
-export { getEcommerceAssetsJob, normalizeTextLanguage };
+export { normalizeTextLanguage };
