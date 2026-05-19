@@ -413,14 +413,42 @@ export default function EcommerceAssetsPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={textLanguage}
+              onChange={(event) => setTextLanguage(event.target.value as EcommerceTextLanguage)}
+              disabled={isBusy}
+              className="h-9 rounded-md border border-white/15 bg-white/[0.06] px-2.5 text-xs text-zinc-200 outline-none disabled:opacity-50"
+            >
+              <option value="en">语言：英文</option>
+              <option value="zh">语言：中文</option>
+            </select>
+            <select
+              value={imageResolution}
+              onChange={(event) => setImageResolution(event.target.value as KieResolution)}
+              disabled={isBusy}
+              className="h-9 rounded-md border border-white/15 bg-white/[0.06] px-2.5 text-xs text-zinc-200 outline-none disabled:opacity-50"
+            >
+              <option value="1K">图片：1K</option>
+              <option value="2K" disabled>图片：2K — 即将开放</option>
+              <option value="4K" disabled>图片：4K — 即将开放</option>
+            </select>
+            <select
+              value={videoResolution}
+              onChange={(event) => setVideoResolution(event.target.value as VideoResolution)}
+              disabled={isBusy}
+              className="h-9 rounded-md border border-white/15 bg-white/[0.06] px-2.5 text-xs text-zinc-200 outline-none disabled:opacity-50"
+            >
+              <option value="480p">视频：480p</option>
+              <option value="720p" disabled>视频：720p — 即将开放</option>
+            </select>
             <button
               type="button"
               disabled={!hasAnyResult}
               onClick={() => downloadZip().catch((zipError) => setError(zipError instanceof Error ? zipError.message : "导出 ZIP 失败。"))}
-              className="inline-flex h-10 items-center gap-2 rounded-md border border-white/15 px-4 text-sm font-semibold text-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-600"
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-white/15 px-3 text-xs font-semibold text-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-600"
             >
-              <FileArchive size={16} aria-hidden="true" />
-              下载全部 ZIP
+              <FileArchive size={15} aria-hidden="true" />
+              下载 ZIP
             </button>
           </div>
         </header>
@@ -457,55 +485,6 @@ export default function EcommerceAssetsPage() {
                 <p className="mt-2 text-sm leading-6 text-zinc-300">{job.brief.designLanguage}</p>
               </div>
             ) : null}
-            <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
-              <label className="text-xs font-semibold uppercase text-zinc-500" htmlFor="ecommerce-language">
-                语言
-              </label>
-              <select
-                id="ecommerce-language"
-                value={textLanguage}
-                onChange={(event) => setTextLanguage(event.target.value as EcommerceTextLanguage)}
-                disabled={isBusy}
-                className="mt-2 h-10 w-full rounded-md border border-white/15 bg-black/30 px-3 text-sm text-zinc-100 outline-none disabled:opacity-50"
-              >
-                <option value="en">英文</option>
-                <option value="zh">中文</option>
-              </select>
-              <p className="mt-2 text-xs leading-5 text-zinc-500">
-                控制生成图片、storyboard 和视频提示词的整体语言语境。
-              </p>
-            </div>
-            <div className="mt-3 rounded-md border border-white/10 bg-black/20 p-3">
-              <label className="text-xs font-semibold uppercase text-zinc-500" htmlFor="ecommerce-image-resolution">
-                图片画质
-              </label>
-              <select
-                id="ecommerce-image-resolution"
-                value={imageResolution}
-                onChange={(event) => setImageResolution(event.target.value as KieResolution)}
-                disabled={isBusy}
-                className="mt-2 h-10 w-full rounded-md border border-white/15 bg-black/30 px-3 text-sm text-zinc-100 outline-none disabled:opacity-50"
-              >
-                <option value="1K">1K（标准）</option>
-                <option value="2K" disabled>2K（高级）— 即将开放</option>
-                <option value="4K" disabled>4K（超清）— 即将开放</option>
-              </select>
-            </div>
-            <div className="mt-3 rounded-md border border-white/10 bg-black/20 p-3">
-              <label className="text-xs font-semibold uppercase text-zinc-500" htmlFor="ecommerce-video-resolution">
-                视频画质
-              </label>
-              <select
-                id="ecommerce-video-resolution"
-                value={videoResolution}
-                onChange={(event) => setVideoResolution(event.target.value as VideoResolution)}
-                disabled={isBusy}
-                className="mt-2 h-10 w-full rounded-md border border-white/15 bg-black/30 px-3 text-sm text-zinc-100 outline-none disabled:opacity-50"
-              >
-                <option value="480p">480p（标准）</option>
-                <option value="720p" disabled>720p（高清）— 即将开放</option>
-              </select>
-            </div>
             <button
               type="button"
               disabled={!hasFront || isBusy}
