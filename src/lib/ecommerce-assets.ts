@@ -49,7 +49,7 @@ export function fallbackEcommerceBrief(textLanguage: EcommerceTextLanguage): Eco
   };
 }
 
-function normalizeBrief(value: Partial<EcommerceCreativeBrief> | null, textLanguage: EcommerceTextLanguage) {
+function normalizeBrief(value: Partial<EcommerceCreativeBrief> | null, textLanguage: EcommerceTextLanguage): EcommerceCreativeBrief {
   const fallback = fallbackEcommerceBrief(textLanguage);
   return {
     productCategory: value?.productCategory || fallback.productCategory,
@@ -65,7 +65,8 @@ function normalizeBrief(value: Partial<EcommerceCreativeBrief> | null, textLangu
 
 export async function analyzeProductForEcommerceAssets(
   productImageUrls: string[],
-  textLanguage: EcommerceTextLanguage
+  textLanguage: EcommerceTextLanguage,
+  customRequirements?: string
 ): Promise<EcommerceCreativeBrief> {
   const viewLabels = ["front view", "side view", "back view"];
   const imageContent = productImageUrls.map((url, i) => ({
@@ -89,6 +90,7 @@ export async function analyzeProductForEcommerceAssets(
               "The creative direction must be clean, premium, low-text, product-led, and suitable for marketplace carousel/detail images.",
               "Use all views to build a comprehensive understanding of the product's shape, materials, and features.",
               `Visible text language for generated assets: ${textLanguage === "zh" ? "Chinese" : "English"}.`,
+              customRequirements ? `\nUser custom requirements (MUST follow when generating all assets): ${customRequirements}` : "",
             ].join("\n"),
           },
           ...imageContent,
@@ -96,7 +98,9 @@ export async function analyzeProductForEcommerceAssets(
       },
     ]
   );
-  return normalizeBrief(response, textLanguage);
+  const brief = normalizeBrief(response, textLanguage);
+  if (customRequirements) brief.customRequirements = customRequirements;
+  return brief;
 }
 
 function viewReferenceNote(numViews: number) {
@@ -104,6 +108,11 @@ function viewReferenceNote(numViews: number) {
   return numViews === 3
     ? "Three product reference images are provided: front view, side view, and back view. Use all views together to build a complete 3D understanding of the product shape, depth, materials, and features. The front view is the primary reference; side and back views ensure accuracy from every angle."
     : `Multiple product reference images (${numViews}) are provided. Use all views together to fully understand the product shape, materials, and features.`;
+}
+
+function customRequirementsBlock(customRequirements?: string) {
+  if (!customRequirements?.trim()) return "";
+  return `\nUser custom requirements (MUST follow): ${customRequirements.trim()}`;
 }
 
 function baseImagePrompt(brief: EcommerceCreativeBrief, textLanguage: EcommerceTextLanguage, numViews = 1) {
@@ -121,6 +130,7 @@ function baseImagePrompt(brief: EcommerceCreativeBrief, textLanguage: EcommerceT
     languageInstruction(textLanguage),
     "Keep the overall image clean, premium, spacious, and product-led.",
     "Do not add fake brand logos, dense copy, clutter, watermarks, QR codes, pricing, badges, or unrelated props.",
+    customRequirementsBlock(brief.customRequirements),
   ].filter(Boolean).join("\n");
 }
 
@@ -134,7 +144,7 @@ export function buildEcommerceImagePrompts(
     {
       kind: "carousel",
       index: 1,
-      title: textLanguage === "zh" ? "轮播图 1：白底主图" : "Carousel 1: White Main Image",
+      title: textLanguage === "zh" ? "白底主图" : "White Background",
       prompt: [
         base,
         "Image role: carousel image 1.",
@@ -145,7 +155,7 @@ export function buildEcommerceImagePrompts(
     {
       kind: "carousel",
       index: 2,
-      title: textLanguage === "zh" ? "轮播图 2：英雄卖点" : "Carousel 2: Hero Benefit",
+      title: textLanguage === "zh" ? "卖点展示" : "Hero Benefit",
       prompt: [
         base,
         `Carousel direction: ${brief.carouselDirection}.`,
@@ -155,7 +165,7 @@ export function buildEcommerceImagePrompts(
     {
       kind: "carousel",
       index: 3,
-      title: textLanguage === "zh" ? "轮播图 3：场景氛围" : "Carousel 3: Lifestyle Context",
+      title: textLanguage === "zh" ? "使用场景" : "Lifestyle Scene",
       prompt: [
         base,
         `Carousel direction: ${brief.carouselDirection}.`,
@@ -163,9 +173,39 @@ export function buildEcommerceImagePrompts(
       ].join("\n"),
     },
     {
+      kind: "carousel",
+      index: 4,
+      title: textLanguage === "zh" ? "材质细节" : "Material Close-up",
+      prompt: [
+        base,
+        `Carousel direction: ${brief.carouselDirection}.`,
+        "Image role: carousel image 4. Use macro or close-up composition to showcase material quality, texture, craftsmanship, or fine details of the product.",
+      ].join("\n"),
+    },
+    {
+      kind: "carousel",
+      index: 5,
+      title: textLanguage === "zh" ? "功能演示" : "Feature in Action",
+      prompt: [
+        base,
+        `Carousel direction: ${brief.carouselDirection}.`,
+        "Image role: carousel image 5. Show the product being used or in action — convey functionality, movement, or dynamic energy while keeping the composition premium and clean.",
+      ].join("\n"),
+    },
+    {
+      kind: "carousel",
+      index: 6,
+      title: textLanguage === "zh" ? "核心优势" : "Key Differentiator",
+      prompt: [
+        base,
+        `Carousel direction: ${brief.carouselDirection}.`,
+        "Image role: carousel image 6. Highlight the product's unique advantage or differentiator — what sets it apart from competitors. Use comparison cues, before/after hints, or a bold visual statement.",
+      ].join("\n"),
+    },
+    {
       kind: "detail",
       index: 1,
-      title: textLanguage === "zh" ? "详情图 1：核心卖点" : "Detail 1: Core Benefits",
+      title: textLanguage === "zh" ? "卖点总览" : "Benefits Overview",
       prompt: [
         base,
         `Detail direction: ${brief.detailDirection}.`,
@@ -175,7 +215,7 @@ export function buildEcommerceImagePrompts(
     {
       kind: "detail",
       index: 2,
-      title: textLanguage === "zh" ? "详情图 2：材质细节" : "Detail 2: Material Detail",
+      title: textLanguage === "zh" ? "材质工艺" : "Material & Craft",
       prompt: [
         base,
         `Detail direction: ${brief.detailDirection}.`,
@@ -185,11 +225,41 @@ export function buildEcommerceImagePrompts(
     {
       kind: "detail",
       index: 3,
-      title: textLanguage === "zh" ? "详情图 3：使用信任" : "Detail 3: Use and Trust",
+      title: textLanguage === "zh" ? "尺寸规格" : "Size & Specs",
       prompt: [
         base,
         `Detail direction: ${brief.detailDirection}.`,
-        "Image role: detail image 3. Show a clean scenario, scale, reliability, or purchase-confidence message without clutter.",
+        "Image role: detail image 3. Present product dimensions, weight, capacity, or technical specifications in a clean infographic style with minimal labels.",
+      ].join("\n"),
+    },
+    {
+      kind: "detail",
+      index: 4,
+      title: textLanguage === "zh" ? "场景展示" : "Use Case Showcase",
+      prompt: [
+        base,
+        `Detail direction: ${brief.detailDirection}.`,
+        "Image role: detail image 4. Show the product in a real-life usage scenario — where and how the target customer would use it. Keep it aspirational yet authentic.",
+      ].join("\n"),
+    },
+    {
+      kind: "detail",
+      index: 5,
+      title: textLanguage === "zh" ? "信任背书" : "Trust & Social Proof",
+      prompt: [
+        base,
+        `Detail direction: ${brief.detailDirection}.`,
+        "Image role: detail image 5. Build purchase confidence with trust cues — ratings, certifications, awards, or a clean reliability message without clutter.",
+      ].join("\n"),
+    },
+    {
+      kind: "detail",
+      index: 6,
+      title: textLanguage === "zh" ? "包装配件" : "Package & Accessories",
+      prompt: [
+        base,
+        `Detail direction: ${brief.detailDirection}.`,
+        "Image role: detail image 6. Show the product with its packaging, included accessories, or unboxing experience to convey completeness and value.",
       ].join("\n"),
     },
   ];
@@ -214,6 +284,7 @@ export function buildEcommerceStoryboardPrompt(
     `Design language: ${brief.designLanguage}.`,
     `Video direction: ${brief.videoDirection}.`,
     "Keep typography sparse and polished. Do not add fake logos, dense text, prices, watermarks, or unrelated props.",
+    customRequirementsBlock(brief.customRequirements),
   ].join("\n");
 }
 
@@ -233,6 +304,7 @@ export function buildEcommerceVideoPrompt(brief: EcommerceCreativeBrief, textLan
     `Video direction: ${brief.videoDirection}.`,
     "Use clean studio lighting, smooth camera motion, premium ecommerce pacing, and minimal on-screen text.",
     "Do not invent a different product, fake logo, price, watermark, or unrelated props.",
+    customRequirementsBlock(brief.customRequirements),
   ].join(" ");
 
   return prompt.length > 1800 ? `${prompt.slice(0, 1797)}...` : prompt;

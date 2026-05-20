@@ -20,6 +20,7 @@ import type {
   EcommerceImageSlot,
   EcommerceSlotStatus,
   EcommerceTextLanguage,
+  KieAspectRatio,
   KieResolution,
 } from "./types";
 
@@ -45,6 +46,7 @@ async function createImageSlots(input: {
   productImageUrls: string[];
   textLanguage: EcommerceTextLanguage;
   imageResolution: KieResolution;
+  imageAspectRatio: KieAspectRatio;
 }) {
   const promptSlots = buildEcommerceImagePrompts(input.brief, input.textLanguage, input.productImageUrls.length);
   const slots: EcommerceImageSlot[] = [];
@@ -53,7 +55,7 @@ async function createImageSlots(input: {
     const taskId = await createKieImageTask({
       prompt: promptSlot.prompt,
       inputUrls: input.productImageUrls,
-      aspectRatio: "1:1",
+      aspectRatio: input.imageAspectRatio,
       resolution: input.imageResolution,
     });
     slots.push({
@@ -75,14 +77,23 @@ async function createImageSlots(input: {
 
 export async function createEcommerceAssetsJob(input: {
   productPhotoDataUrls: string[];
+  customRequirements?: string;
   textLanguage?: unknown;
   imageResolution?: string;
+  imageAspectRatio?: string;
+  videoAspectRatio?: string;
   videoResolution?: string;
 }) {
   const textLanguage = normalizeTextLanguage(input.textLanguage);
   const imageResolution: KieResolution = ["1K", "2K", "4K"].includes(input.imageResolution ?? "")
     ? (input.imageResolution as KieResolution)
     : "1K";
+  const imageAspectRatio: KieAspectRatio = ["1:1", "4:3", "3:4", "16:9", "9:16"].includes(input.imageAspectRatio ?? "")
+    ? (input.imageAspectRatio as KieAspectRatio)
+    : "1:1";
+  const videoAspectRatio: KieAspectRatio = ["1:1", "4:3", "3:4", "16:9", "9:16"].includes(input.videoAspectRatio ?? "")
+    ? (input.videoAspectRatio as KieAspectRatio)
+    : "1:1";
   const videoResolution: "480p" | "720p" = input.videoResolution === "720p" ? "720p" : "480p";
   const jobId = generateEcommerceAssetsJobId();
   const now = Date.now();
@@ -90,6 +101,9 @@ export async function createEcommerceAssetsJob(input: {
     id: jobId,
     status: "preparing",
     textLanguage,
+    customRequirements: input.customRequirements,
+    imageAspectRatio,
+    videoAspectRatio,
     carouselImages: [],
     detailImages: [],
     video: {
@@ -111,18 +125,18 @@ export async function createEcommerceAssetsJob(input: {
     const productImageUrl = productImageUrls[0];
     let brief: EcommerceCreativeBrief;
     try {
-      brief = await analyzeProductForEcommerceAssets(productImageUrls, textLanguage);
+      brief = await analyzeProductForEcommerceAssets(productImageUrls, textLanguage, input.customRequirements);
     } catch (error) {
       console.error("[ecommerce-assets] Falling back after product analysis failed:", error instanceof Error ? error.message : error);
       brief = fallbackEcommerceBrief(textLanguage);
     }
 
-    const imageSlots = await createImageSlots({ brief, productImageUrl, productImageUrls, textLanguage, imageResolution });
+    const imageSlots = await createImageSlots({ brief, productImageUrl, productImageUrls, textLanguage, imageResolution, imageAspectRatio });
     const storyboardPrompt = buildEcommerceStoryboardPrompt(brief, textLanguage, productImageUrls.length);
     const storyboardTaskId = await createKieImageTask({
       prompt: storyboardPrompt,
       inputUrls: productImageUrls,
-      aspectRatio: "1:1",
+      aspectRatio: videoAspectRatio,
       resolution: imageResolution,
     });
 
@@ -187,10 +201,13 @@ export async function refreshEcommerceAssetsJob(currentJob: EcommerceAssetsJob):
       ? currentJob.productImageUrls
       : [currentJob.productImageUrl];
     const videoRes: "480p" | "720p" = currentJob.videoResolution === "720p" ? "720p" : "480p";
+    const videoAspect = (["1:1", "16:9", "9:16"].includes(currentJob.videoAspectRatio ?? "")
+      ? currentJob.videoAspectRatio!
+      : "1:1") as "1:1" | "16:9" | "9:16";
     const taskId = await createKieSeedanceVideoTask({
       prompt: video.prompt,
       referenceImageUrls: [...productRefs, video.storyboardUrl],
-      aspectRatio: "1:1",
+      aspectRatio: videoAspect,
       resolution: videoRes,
       duration: 15,
     });

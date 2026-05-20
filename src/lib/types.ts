@@ -88,6 +88,7 @@ export type EcommerceCreativeBrief = {
   carouselDirection: string;
   detailDirection: string;
   videoDirection: string;
+  customRequirements?: string;
 };
 
 export type EcommerceImageSlot = {
@@ -117,10 +118,13 @@ export type EcommerceAssetsJob = {
   status: "preparing" | "processing" | "completed" | "failed";
   textLanguage: EcommerceTextLanguage;
   imageResolution?: string;
+  imageAspectRatio?: string;
   videoResolution?: string;
+  videoAspectRatio?: string;
   productImageUrl?: string;
   productImageUrls?: string[];
   brief?: EcommerceCreativeBrief;
+  customRequirements?: string;
   carouselImages: EcommerceImageSlot[];
   detailImages: EcommerceImageSlot[];
   video: EcommerceVideoSlot;

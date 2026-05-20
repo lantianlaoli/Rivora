@@ -9,8 +9,11 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       productPhotoDataUrls?: string[];
       productPhotoDataUrl?: string;
+      customRequirements?: string;
       textLanguage?: unknown;
       imageResolution?: string;
+      imageAspectRatio?: string;
+      videoAspectRatio?: string;
       videoResolution?: string;
     };
 
@@ -27,8 +30,11 @@ export async function POST(request: Request) {
 
     const job = await createEcommerceAssetsJob({
       productPhotoDataUrls: validUrls,
+      customRequirements: body.customRequirements,
       textLanguage: body.textLanguage,
       imageResolution: body.imageResolution,
+      imageAspectRatio: body.imageAspectRatio,
+      videoAspectRatio: body.videoAspectRatio,
       videoResolution: body.videoResolution,
     });
 
